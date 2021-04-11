@@ -1,5 +1,6 @@
 package br.com.caelum.camel;
 
+import org.apache.activemq.camel.component.ActiveMQComponent;
 import org.apache.camel.CamelContext;
 import org.apache.camel.Exchange;
 import org.apache.camel.Processor;
@@ -12,41 +13,13 @@ public class RotaPedidos {
     public static void main(String[] args) throws Exception {
 
         CamelContext context = new DefaultCamelContext();
-//		context.addRoutes(new RouteBuilder() {
-//			@Override
-//			public void configure() throws Exception {
-//			from("file:pedidos?delay=5s&noop=true").
-//				split().xpath("/pedido/itens/item").
-//					log("${id} - ${body}").
-//				filter().xpath("/item/formato[text()='EBOOK']").
-//					log("${id} - ${body}").
-//				marshal().xmljson().
-//				log("${body}").
-//				setHeader(Exchange.FILE_NAME, simple("${file:name.noext}-${header.CamelSplitIndex}.json")).
-//			to("file:saida");
-//			}
-//		});
-
-//		context.addRoutes(new RouteBuilder() {
-//			@Override
-//			public void configure() throws Exception {
-//			from("file:pedidos?delay=5s&noop=true").
-//				split().xpath("/pedido/itens/item").
-//				log("${id} - ${body}").
-//				filter().xpath("/item/formato[text()='EBOOK']").
-//				log("${id} - ${body}").
-//				marshal().xmljson().
-//				log("${body}").
-//				setHeader(Exchange.HTTP_METHOD, HttpMethods.POST).
-//			to("http4://localhost:8080/webservices/ebook/item");
-//			}
-//		})
+		context.addComponent("activemq", ActiveMQComponent.activeMQComponent("tcp://localhost:61616"));
 
         context.addRoutes(new RouteBuilder() {
             @Override
             public void configure() throws Exception {
 
-            	errorHandler(deadLetterChannel("file:erro").
+            	errorHandler(deadLetterChannel("activemq:queue:pedidos.DLQ").
 						logExhaustedMessageHistory(true).
 						maximumRedeliveries(3).
 						redeliveryDelay(2000).onRedelivery(new Processor() {
@@ -58,12 +31,12 @@ public class RotaPedidos {
 							}
 				}));
 
-                from("file:pedidos?delay=5s&noop=true").
+                from("activemq:queue:pedidos").
 				routeId("route-pedidos").
-				to("validator:pedido.xsd");
-//				multicast().
-//					to("direct:soap").
-//					to("direct:http");
+				to("validator:pedido.xsd").
+				multicast().
+					to("direct:soap").
+					to("direct:http");
 
                 from("direct:http").
 				routeId("rota-pedidos").
