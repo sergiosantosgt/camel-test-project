@@ -8,9 +8,9 @@ import org.apache.camel.impl.DefaultCamelContext;
 
 public class RotaPedidos {
 
-	public static void main(String[] args) throws Exception {
+    public static void main(String[] args) throws Exception {
 
-		CamelContext context = new DefaultCamelContext();
+        CamelContext context = new DefaultCamelContext();
 //		context.addRoutes(new RouteBuilder() {
 //			@Override
 //			public void configure() throws Exception {
@@ -41,27 +41,40 @@ public class RotaPedidos {
 //			}
 //		});
 
-		context.addRoutes(new RouteBuilder() {
-			@Override
-			public void configure() throws Exception {
-				from("file:pedidos?delay=5s&noop=true").
-						setProperty("pedidoId", xpath("/pedido/id/text()")).
-						setProperty("clienteId", xpath("/pedido/pagamento/email-titular/text()")).
-						split().xpath("/pedido/itens/item").
-						log("${id} - ${body}").
-						filter().xpath("/item/formato[text()='EBOOK']").
-						setProperty("ebookId", xpath("/item/livro/codigo/text()")).
-						log("${id} - ${body}").
-						marshal().xmljson().
-						log("${body}").
-						setHeader(Exchange.HTTP_METHOD, HttpMethods.GET).
-						setHeader(Exchange.HTTP_QUERY, simple("ebookId=${property.ebookId}&pedidoId=${property.pedidoId}&clienteId=${property.clienteId}")).
-						to("http4://localhost:8080/webservices/ebook/item");
-			}
-		});
+        context.addRoutes(new RouteBuilder() {
+            @Override
+            public void configure() throws Exception {
+                from("file:pedidos?delay=5s&noop=true").
+				routeId("route-pedidos").
+				multicast().
+					to("direct:soap").
+					to("direct:http");
 
-		context.start();
-		Thread.sleep(20000);
-		context.stop();
-	}	
+                from("direct:http").
+				routeId("rota-pedidos").
+					log("${body}").
+					setProperty("pedidoId", xpath("/pedido/id/text()")).
+					setProperty("clienteId", xpath("/pedido/pagamento/email-titular/text()")).
+					split().xpath("/pedido/itens/item").
+					log("${id} - ${body}").
+					filter().xpath("/item/formato[text()='EBOOK']").
+					setProperty("ebookId", xpath("/item/livro/codigo/text()")).
+					log("${id} - ${body}").
+					marshal().xmljson().
+					log("${body}").
+					setHeader(Exchange.HTTP_METHOD, HttpMethods.GET).
+					setHeader(Exchange.HTTP_QUERY, simple("ebookId=${property.ebookId}&pedidoId=${property.pedidoId}&clienteId=${property.clienteId}")).
+					to("http4://localhost:8080/webservices/ebook/item");
+
+				from("direct:soap").
+				routeId("rota-soap").
+					setBody(constant("<envelope>teste</envelope>")).
+				to("mock:soap");
+            }
+        });
+
+        context.start();
+        Thread.sleep(20000);
+        context.stop();
+    }
 }
